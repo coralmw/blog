@@ -1,0 +1,6 @@
+baseURL = "https://tparks.github.io/blog"
+languageCode = "en-uk"
+title = "correlation.zone"
+
+theme = "tale"
+publishDir = "docs"
