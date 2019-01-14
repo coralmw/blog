@@ -3,7 +3,23 @@
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   
   <url>
+    <loc>https://tparks.github.io/blog/posts/10g-network-router-in-haskell/</loc>
+    <lastmod>2019-01-14T08:07:40-07:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://tparks.github.io/blog/posts/fpga-quantum-simulation/</loc>
+    <lastmod>2019-01-14T08:06:15-07:00</lastmod>
+  </url>
+  
+  <url>
     <loc>https://tparks.github.io/blog/categories/</loc>
+    <priority>0</priority>
+  </url>
+  
+  <url>
+    <loc>https://tparks.github.io/blog/posts/</loc>
+    <lastmod>2019-01-14T08:07:40-07:00</lastmod>
     <priority>0</priority>
   </url>
   
@@ -14,6 +30,7 @@
   
   <url>
     <loc>https://tparks.github.io/blog/</loc>
+    <lastmod>2019-01-14T08:07:40-07:00</lastmod>
     <priority>0</priority>
   </url>
   
