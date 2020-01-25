@@ -1,34 +1,44 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Posts on correlation.zone</title>
-    <link>https://tparks.github.io/blog/posts/</link>
+    <link>http://localhost:1313/posts/</link>
     <description>Recent content in Posts on correlation.zone</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-uk</language>
-    <lastBuildDate>Mon, 14 Jan 2019 08:07:40 -0700</lastBuildDate>
+    <lastBuildDate>Sat, 25 Jan 2020 08:07:40 -0700</lastBuildDate>
     
-	<atom:link href="https://tparks.github.io/blog/posts/index.xml" rel="self" type="application/rss+xml" />
+	<atom:link href="http://localhost:1313/posts/index.xml" rel="self" type="application/rss+xml" />
     
     
     <item>
+      <title>Graphcore: headerless packets and the perfect NOC</title>
+      <link>http://localhost:1313/posts/graphcorenoc/</link>
+      <pubDate>Sat, 25 Jan 2020 08:07:40 -0700</pubDate>
+      
+      <guid>http://localhost:1313/posts/graphcorenoc/</guid>
+      <description>Graphcore is a Bristol, UK based chip design startup developing a ML accelerator equalling current NVIDIA parts for direct matrix multiply performance but (probably) maintaining that same performance on less structured workloads. This is in contrast to the standard GPGPU model that suffers significant performance degradation on programs with unpredictable control flow.
+Chip multiprocessors need to ensure the interconnect can sustain high instruction throughput for the cores at the minimum area and power cost for a target workload.</description>
+    </item>
+    
+    <item>
       <title>10G Network Router in Haskell</title>
-      <link>https://tparks.github.io/blog/posts/10g-network-router-in-haskell/</link>
+      <link>http://localhost:1313/posts/10g-network-router-in-haskell/</link>
       <pubDate>Mon, 14 Jan 2019 08:07:40 -0700</pubDate>
       
-      <guid>https://tparks.github.io/blog/posts/10g-network-router-in-haskell/</guid>
-      <description>As part of Noa Z&amp;rsquo;s course, we modified the NetFPGA SUME reference design to support cut-through low latency switching at 10G line rate.
+      <guid>http://localhost:1313/posts/10g-network-router-in-haskell/</guid>
+      <description>As part of Noa Z&#39;s course, we modified the NetFPGA SUME reference design to support cut-through low latency switching at 10G line rate.
 As part of this project a new output port lookup module was written in CλaSH, a Haskell derived DSL compiling to Verilog. The pipelined design was exceptionally succinct when compared to the reference Verilog design.
 The document is a literate haskell walk-through of the OPL module, for use as a building block for other pipelined systems.</description>
     </item>
     
     <item>
       <title>FPGA Quantum Simulation</title>
-      <link>https://tparks.github.io/blog/posts/fpga-quantum-simulation/</link>
+      <link>http://localhost:1313/posts/fpga-quantum-simulation/</link>
       <pubDate>Mon, 14 Jan 2019 08:06:15 -0700</pubDate>
       
-      <guid>https://tparks.github.io/blog/posts/fpga-quantum-simulation/</guid>
-      <description>A high performance quantum circuit simulator in CλaSH Introduction For my master&amp;rsquo;s project, I aimed to develop a FPGA based quantum simulator with the objective of running &amp;gt;30 qubits at reasonable depth on a single Amazon F1 instance. Whilst the full-scale tests never happened, a tested general simulator was produced and was validated at 16 qubits on Zynq hardware. This series of blog posts will describe the simulation method and the use of CλaSH as a tool for rapid development of hardware networks.</description>
+      <guid>http://localhost:1313/posts/fpga-quantum-simulation/</guid>
+      <description>A high performance quantum circuit simulator in CλaSH Introduction For my master&#39;s project, I aimed to develop a FPGA based quantum simulator with the objective of running &amp;gt;30 qubits at reasonable depth on a single Amazon F1 instance. Whilst the full-scale tests never happened, a tested general simulator was produced and was validated at 16 qubits on Zynq hardware. This series of blog posts will describe the simulation method and the use of CλaSH as a tool for rapid development of hardware networks.</description>
     </item>
     
   </channel>

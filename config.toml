@@ -1,6 +1,9 @@
-baseURL = "https://tparks.github.io/blog"
+baseURL = "https://correlation.zone/"
 languageCode = "en-uk"
 title = "correlation.zone"
 
 theme = "tale"
 publishDir = "docs"
+
+[Author]
+    name = "Thomas Parks"

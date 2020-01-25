@@ -1,37 +1,38 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   
   <url>
-    <loc>https://tparks.github.io/blog/posts/10g-network-router-in-haskell/</loc>
+    <loc>http://localhost:1313/</loc>
+    <lastmod>2020-01-25T08:07:40-07:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://localhost:1313/posts/graphcorenoc/</loc>
+    <lastmod>2020-01-25T08:07:40-07:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://localhost:1313/posts/</loc>
+    <lastmod>2020-01-25T08:07:40-07:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://localhost:1313/posts/10g-network-router-in-haskell/</loc>
     <lastmod>2019-01-14T08:07:40-07:00</lastmod>
   </url>
   
   <url>
-    <loc>https://tparks.github.io/blog/posts/fpga-quantum-simulation/</loc>
+    <loc>http://localhost:1313/posts/fpga-quantum-simulation/</loc>
     <lastmod>2019-01-14T08:06:15-07:00</lastmod>
   </url>
   
   <url>
-    <loc>https://tparks.github.io/blog/categories/</loc>
-    <priority>0</priority>
+    <loc>http://localhost:1313/categories/</loc>
   </url>
   
   <url>
-    <loc>https://tparks.github.io/blog/posts/</loc>
-    <lastmod>2019-01-14T08:07:40-07:00</lastmod>
-    <priority>0</priority>
-  </url>
-  
-  <url>
-    <loc>https://tparks.github.io/blog/tags/</loc>
-    <priority>0</priority>
-  </url>
-  
-  <url>
-    <loc>https://tparks.github.io/blog/</loc>
-    <lastmod>2019-01-14T08:07:40-07:00</lastmod>
-    <priority>0</priority>
+    <loc>http://localhost:1313/tags/</loc>
   </url>
   
 </urlset>
