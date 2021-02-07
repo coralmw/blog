@@ -3,33 +3,30 @@
     <head>
 		<meta charset="UTF-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	
-		<title>
-				FPGA Quantum Simulation &middot; correlation.zone
-		</title>
-	
+
+		<title>FPGA Quantum Simulation &middot; correlation.zone</title>
+
 		
-  		<link rel="stylesheet" href="/blog/css/style.css">
-		<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Libre+Baskerville:400,400i,700">
-	
+  		<link rel="stylesheet" href="/css/style.css">
+		<link rel="stylesheet" href="/css/fonts.css">
 		
-		<link rel="icon" type="image/png" sizes="32x32" href="/blog/images/favicon-32x32.png">
-		<link rel="icon" type="image/png" sizes="16x16" href="/blog/images/favicon-16x16.png">
-		<link rel="apple-touch-icon" sizes="180x180" href="/blog/images/apple-touch-icon.png">
-	
+		<link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
+		<link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png">
+		<link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
+
 		
 		<link href="" rel="alternate" type="application/rss+xml" title="correlation.zone" />
 	</head>
-	
+
     <body>
         		<nav class="nav">
 			<div class="nav-container">
-				<a href="/blog/">
+				<a href="/">
 					<h2 class="nav-title">correlation.zone</h2>
 				</a>
 				<ul>
-    <li><a href="/blog/about">About</a></li>
-    <li><a href="/blog/">Posts</a></li>
+    
+    
 </ul>
 			</div>
 		</nav>
@@ -40,106 +37,71 @@
 	<div class="post">
 		<div class="post-info">
     <span>Written by</span>
-        
+        Thomas Parks
         <br>
-        <span>on&nbsp;</span><time datetime="2019-01-14 08:06:15 -0700 MST">January 14, 2019</time>
+        <span>on&nbsp;</span><time datetime="2019-01-14 08:06:15 -0700 -0700">January 14, 2019</time>
 </div>
+
 		<h1 class="post-title">FPGA Quantum Simulation</h1>
 <div class="post-line"></div>
 
 		
 
-		
-
-<h1 id="a-high-performance-quantum-circuit-simulator-in-cλash">A high performance quantum circuit simulator in CλaSH</h1>
-
+		<h1 id="a-high-performance-quantum-circuit-simulator-in-cλash">A high performance quantum circuit simulator in CλaSH</h1>
 <h2 id="introduction">Introduction</h2>
-
 <p>For my master&rsquo;s project, I aimed to develop a FPGA based quantum simulator with the objective of running &gt;30 qubits at reasonable depth on a single Amazon F1 instance. Whilst the full-scale tests never happened, a tested general simulator was produced and was validated at 16 qubits on Zynq hardware. This series of blog posts will describe the simulation method and the use of CλaSH as a tool for rapid development of hardware networks.</p>
-
 <p>Quantum simulation would be better termed quantum <em>emulation</em>, as hopefully real QC&rsquo;s will come along and we will want to call the process of simulating physical systems on QC simulation. But with with few exceptions simulation has stuck and I hope this will not be too confusing for readers from 2025.</p>
-
 <h2 id="contents">Contents</h2>
-
 <ol>
 <li>Quantum circuits (skip this if you have QC background)</li>
 <li>The recursive simulation algorithm</li>
 <li>Hardware layout</li>
 <li>Benchmarks</li>
 </ol>
-
 <h2 id="the-simulation-method">The simulation method</h2>
-
 <p>A quantum state on N qubits contains information about the relative magnitude and phase of all 2^N possible bitstrings. In the general, and common, case all 2^N values need to be stored as complex numbers. For even a 50 qubit simulation this requires a prohibitively large amount of memory (on the order of petabytes, and growing exponentially). Google has proposed a 72 qubit chip, and if it is able to run a square circuit this is likely to demonstrate true quantum advantage.</p>
-
 <p>In order to push the boundaries of simulation groups from Google, Alibaba and Oxford use tensor network methods to simulate up to 52 qubit systems on datacenter scale computers.</p>
-
 <p>We use a method of simulation inspired by the path integral formalism of QM. The likelihood of sampling a given final state is the sum of the probabilities of all paths that could possibly result in this state. This contrasts with the time evolution view of QM, where a inital state is evolved in some environment and then the final sample probabilities are found from the final state.</p>
-
 <p>For large physical systems performing the integral over all possible priors can be challenging. For quantum circuits however it is straightforward - at each layer in the circuit there is a gate of low arity. The only states that can contribute are the states that when acted upon by that gate, give the target state.</p>
-
 <p>This leads to a succinct <code>backwardsEvaluate</code> function for finding the amplitude of a given basis vector after applying a circuit:</p>
-
-<pre><code class="language-haskell">&lt;!--backwardsEvaluate circuit inital_state target_state--&gt;
-backwardsEvaluate [] i t = 
-    | i == t    = 1.0
-    | otherwise = 0.0
-backwardsEvaluate (gate:xs) i t =
-    let
-        prior_states = (possiblePriors gate t)
-    in let
-        prior_amplitudes = map (backwardsEvaluate xs i) prior_states
-    in
-        -- the final amplitude is the sum of prior amplitudes
-        -- multiplied by the action of the gate on the prior state
-        sum (map (*) (zip prior_amplitudes (map gate prior_states)))
-</code></pre>
-
-<p>This function works in tandem with a forwards evaluator to get the action of a circuit on a inital state.</p>
-
-<pre><code class="language-python">def simulate(circuit, state=0): # zero is the |00...00&gt; state.
-    for gate in circuit:
-        sucessors = act(gate, circuit)
-        amplitudes = map(backwardsEvaluate, sucessors)
-        state = random.choices(sucessors,
-                               weights=amplitudes.conj()*amplitudes, 
-                               k=1)
-    return state, amplitudes[sucessors.index(state)]
-</code></pre>
-
-<p>With a bit of work you can show that this function will return samples of the final state vector in proportion to the corresponding amplitude. This method also gives the true amplitude of that state so to sample the full vector you can call this function repeatedly until the absolute sum of amplitudes nears unity. Avoiding previously sampled elements of the state is a exercise for the reader!</p>
-
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-haskell" data-lang="haskell"><span style="color:#f92672">&lt;!--</span>backwardsEvaluate circuit inital_state target_state<span style="color:#f92672">--&gt;</span>
+<span style="color:#a6e22e">backwardsEvaluate</span> <span style="color:#66d9ef">[]</span> i t <span style="color:#f92672">=</span> 
+    <span style="color:#f92672">|</span> i <span style="color:#f92672">==</span> t    <span style="color:#f92672">=</span> <span style="color:#ae81ff">1.0</span>
+    <span style="color:#f92672">|</span> otherwise <span style="color:#f92672">=</span> <span style="color:#ae81ff">0.0</span>
+<span style="color:#a6e22e">backwardsEvaluate</span> (gate<span style="color:#66d9ef">:</span>xs) i t <span style="color:#f92672">=</span>
+    <span style="color:#66d9ef">let</span>
+        prior_states <span style="color:#f92672">=</span> (possiblePriors gate t)
+    <span style="color:#66d9ef">in</span> <span style="color:#66d9ef">let</span>
+        prior_amplitudes <span style="color:#f92672">=</span> map (backwardsEvaluate xs i) prior_states
+    <span style="color:#66d9ef">in</span>
+        <span style="color:#75715e">-- the final amplitude is the sum of prior amplitudes</span>
+        <span style="color:#75715e">-- multiplied by the action of the gate on the prior state</span>
+        sum (map (<span style="color:#f92672">*</span>) (zip prior_amplitudes (map gate prior_states)))
+</code></pre></div><p>This function works in tandem with a forwards evaluator to get the action of a circuit on a inital state.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-python" data-lang="python"><span style="color:#66d9ef">def</span> <span style="color:#a6e22e">simulate</span>(circuit, state<span style="color:#f92672">=</span><span style="color:#ae81ff">0</span>): <span style="color:#75715e"># zero is the |00...00&gt; state.</span>
+    <span style="color:#66d9ef">for</span> gate <span style="color:#f92672">in</span> circuit:
+        sucessors <span style="color:#f92672">=</span> act(gate, circuit)
+        amplitudes <span style="color:#f92672">=</span> map(backwardsEvaluate, sucessors)
+        state <span style="color:#f92672">=</span> random<span style="color:#f92672">.</span>choices(sucessors,
+                               weights<span style="color:#f92672">=</span>amplitudes<span style="color:#f92672">.</span>conj()<span style="color:#f92672">*</span>amplitudes, 
+                               k<span style="color:#f92672">=</span><span style="color:#ae81ff">1</span>)
+    <span style="color:#66d9ef">return</span> state, amplitudes[sucessors<span style="color:#f92672">.</span>index(state)]
+</code></pre></div><p>With a bit of work you can show that this function will return samples of the final state vector in proportion to the corresponding amplitude. This method also gives the true amplitude of that state so to sample the full vector you can call this function repeatedly until the absolute sum of amplitudes nears unity. Avoiding previously sampled elements of the state is a exercise for the reader!</p>
 <p>The forwards function is presented in Python in order to emphasise that this function is not performance critical. In fact, in our implementation this function runs on the Zynq ARM core with only <code>backwardsEvaluate</code> built in hardware.</p>
-
 <h3 id="performance-and-tweaking">Performance and tweaking</h3>
-
 <p>This method, if the <code>backwardsEvaluate</code> function runs in a depth-first manner, will use space linear in the depth of the circuit. The tradeoff is that circuit runtime becomes both exponential in width and depth. The runtime can be reduced to that of the naïve matrix multiplication method by memoizing <code>backwardsEvaluate</code> - and if the circuit contains separable states they will never appear in the cache resulting in memory use potentially lower than naïve methods.</p>
-
 <p>The advantage this method poses for FPGA instantiation is that by distributing the recursive calls to <code>backwardsEvaluate</code> in the form of a tree caches can be inserted in ways that provide high physical locality of reference. This allows for very wide memory parallelism and a computational structure that can be mapped to any fabric layout or BRAM availability.</p>
-
 <p>As compared to a direct matrix method this avoids a bottleneck on DRAM access, a key limiting factor for high performance FPGA designs.</p>
-
 <h2 id="the-hardware">The hardware</h2>
-
 <p>The FPGA modules are written in CλaSH, with a ad-hoc wiring generator in Python and a Verilator test suite. Functionality was also verified on a Xilinx Zynq chip at nearly 100MHz.</p>
-
 <p>CλaSH generates synthesizable verilog from Haskell functions of type <code>State -&gt; Input -&gt; (State, Output)</code> where state is the full internal state of your module clock-to-clock. The type of the top-level function that the CPU calls is:</p>
-
-<pre><code class="language-haskell">findamp_mealy_N :: KnownNat n =&gt; ModuleState n -&gt; Input -&gt; (ModuleState n, Output)
-</code></pre>
-
-<p>We use KnownNat to add compile-time parameters to the module. In this case, the modules maintain a stack of evaluations to complete and <code>n</code> is the size of this stack.</p>
-
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-haskell" data-lang="haskell"><span style="color:#a6e22e">findamp_mealy_N</span> <span style="color:#f92672">::</span> <span style="color:#66d9ef">KnownNat</span> n <span style="color:#f92672">=&gt;</span> <span style="color:#66d9ef">ModuleState</span> n <span style="color:#f92672">-&gt;</span> <span style="color:#66d9ef">Input</span> <span style="color:#f92672">-&gt;</span> (<span style="color:#66d9ef">ModuleState</span> n, <span style="color:#66d9ef">Output</span>)
+</code></pre></div><p>We use KnownNat to add compile-time parameters to the module. In this case, the modules maintain a stack of evaluations to complete and <code>n</code> is the size of this stack.</p>
 <h2 id="benchmarks">Benchmarks</h2>
-
 <p>The hardware design was validated on a Zynq development board running Linux. The target device was the xc7z020clg400 at a -1 speed grade. Due to area limitations, and in order to generate a fully entangled intermediate state, a circuit of width 4 and depth 12 was used. The full circuit executed in 3µs, with timing correctly predicted by the RTL model.</p>
-
 <h3 id="scaling-estimation">Scaling estimation</h3>
-
 <p>In order to scale the design to multiple FPGA blades, we need to consider the total bandwidth that may be consumed communicating between parts of the design.</p>
-
 <p>Amazon offers the F1 instance type, making up to 8 FPGA blades consisting of Xilinx Ultrascale+ ZU9P FPGAs with 2586k LUTs. The blades are interconnected via a 400 Gbps bidirectional ring interconnect[@Amazon_EC2_F1_Instances]. In the worst case, a single blade may consist of many low-depth <code>FindAmp</code> modules, with minimum sized stack buffers.</p>
-
 <p>If the modules are responsible for evaluations of depth 2, they will be able to process a new request every 11 cycles. For this design point, where the entire fabric is consuming bandwidth, the bandwidth requirement exceeds the available bandwidth by 70%. More reasonable layouts should therefore not be bandwidth limited on the Amazon FPGA service.</p>
 
 
@@ -147,7 +109,8 @@ backwardsEvaluate (gate:xs) i t =
 	</div>
 
 	<div class="pagination">
-		<a href="/blog/posts/10g-network-router-in-haskell/" class="right arrow">&#8594;</a>
+		<a href="/posts/my-first-post/" class="left arrow">&#8592;</a>
+		<a href="/posts/10g-network-router-in-haskell/" class="right arrow">&#8594;</a>
 
 		<a href="#" class="top">Top</a>
 	</div>
@@ -155,8 +118,9 @@ backwardsEvaluate (gate:xs) i t =
 
 
         		<footer>
+			
 			<span>
-			&copy; <time datetime="2019-01-14 08:08:29.832074 -0700 MST m=&#43;0.052661576">2019</time> . Made with <a href='https://gohugo.io'>Hugo</a> using the <a href='https://github.com/EmielH/tale-hugo/'>Tale</a> theme.
+			&copy; <time datetime="2021-02-06 23:24:40.777205 &#43;0000 GMT m=&#43;0.149672562">2021</time> Thomas Parks. Made with <a href='https://gohugo.io'>Hugo</a> using the <a href='https://github.com/EmielH/tale-hugo/'>Tale</a> theme.
 			</span>
 		</footer>
 

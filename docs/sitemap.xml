@@ -3,36 +3,46 @@
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   
   <url>
-    <loc>http://localhost:1313/</loc>
+    <loc>https://correlation.zone/</loc>
+    <lastmod>2021-02-06T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://correlation.zone/posts/</loc>
+    <lastmod>2021-02-06T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://correlation.zone/posts/mutual-learning/</loc>
+    <lastmod>2021-02-06T00:00:00+00:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>https://correlation.zone/posts/graphcorenoc/</loc>
     <lastmod>2020-01-25T08:07:40-07:00</lastmod>
   </url>
   
   <url>
-    <loc>http://localhost:1313/posts/graphcorenoc/</loc>
-    <lastmod>2020-01-25T08:07:40-07:00</lastmod>
-  </url>
-  
-  <url>
-    <loc>http://localhost:1313/posts/</loc>
-    <lastmod>2020-01-25T08:07:40-07:00</lastmod>
-  </url>
-  
-  <url>
-    <loc>http://localhost:1313/posts/10g-network-router-in-haskell/</loc>
+    <loc>https://correlation.zone/posts/10g-network-router-in-haskell/</loc>
     <lastmod>2019-01-14T08:07:40-07:00</lastmod>
   </url>
   
   <url>
-    <loc>http://localhost:1313/posts/fpga-quantum-simulation/</loc>
+    <loc>https://correlation.zone/posts/fpga-quantum-simulation/</loc>
     <lastmod>2019-01-14T08:06:15-07:00</lastmod>
   </url>
   
   <url>
-    <loc>http://localhost:1313/categories/</loc>
+    <loc>https://correlation.zone/posts/my-first-post/</loc>
+    <lastmod>2019-01-14T07:51:28-07:00</lastmod>
   </url>
   
   <url>
-    <loc>http://localhost:1313/tags/</loc>
+    <loc>https://correlation.zone/categories/</loc>
+  </url>
+  
+  <url>
+    <loc>https://correlation.zone/tags/</loc>
   </url>
   
 </urlset>

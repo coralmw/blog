@@ -3,33 +3,30 @@
     <head>
 		<meta charset="UTF-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	
-		<title>
-				10G Network Router in Haskell &middot; correlation.zone
-		</title>
-	
+
+		<title>10G Network Router in Haskell &middot; correlation.zone</title>
+
 		
-  		<link rel="stylesheet" href="/blog/css/style.css">
-		<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Libre+Baskerville:400,400i,700">
-	
+  		<link rel="stylesheet" href="/css/style.css">
+		<link rel="stylesheet" href="/css/fonts.css">
 		
-		<link rel="icon" type="image/png" sizes="32x32" href="/blog/images/favicon-32x32.png">
-		<link rel="icon" type="image/png" sizes="16x16" href="/blog/images/favicon-16x16.png">
-		<link rel="apple-touch-icon" sizes="180x180" href="/blog/images/apple-touch-icon.png">
-	
+		<link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
+		<link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png">
+		<link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
+
 		
 		<link href="" rel="alternate" type="application/rss+xml" title="correlation.zone" />
 	</head>
-	
+
     <body>
         		<nav class="nav">
 			<div class="nav-container">
-				<a href="/blog/">
+				<a href="/">
 					<h2 class="nav-title">correlation.zone</h2>
 				</a>
 				<ul>
-    <li><a href="/blog/about">About</a></li>
-    <li><a href="/blog/">Posts</a></li>
+    
+    
 </ul>
 			</div>
 		</nav>
@@ -40,281 +37,226 @@
 	<div class="post">
 		<div class="post-info">
     <span>Written by</span>
-        
+        Thomas Parks
         <br>
-        <span>on&nbsp;</span><time datetime="2019-01-14 08:07:40 -0700 MST">January 14, 2019</time>
+        <span>on&nbsp;</span><time datetime="2019-01-14 08:07:40 -0700 -0700">January 14, 2019</time>
 </div>
+
 		<h1 class="post-title">10G Network Router in Haskell</h1>
 <div class="post-line"></div>
 
 		
 
-		
-
-<p>As part of Noa Z&rsquo;s course, we modified the NetFPGA SUME reference design to support cut-through low latency switching at 10G line rate.</p>
-
+		<p>As part of Noa Z&rsquo;s course, we modified the NetFPGA SUME reference design to support cut-through low latency switching at 10G line rate.</p>
 <p>As part of this project a new output port lookup module was written in CλaSH, a Haskell derived DSL compiling to Verilog. The pipelined design was exceptionally succinct when compared to the reference Verilog design.</p>
-
 <p>The document is a literate haskell walk-through of the OPL module, for use as a building block for other pipelined systems. The code cannot be used as-is without the closed NetFPGA SUME codebase and so imports/external references are deliberately omitted with salient details given in the text.</p>
-
 <h2 id="cut-through-switching">Cut-through switching</h2>
-
 <p>A cut-through ethernet switch has a latency that is not dependant on the length of the packet. Cut-through designs commonly have lower average latency and much lower worst case latency than store-and-forward designs. THe advent of FEC in 40G and above speeds obsoletes cutthrough designs as the FEC code, located at the end of the packet, is required to decode the destination MAC for layer 2 routing.</p>
-
 <h2 id="the-architecture-of-the-opl">The architecture of the OPL</h2>
-
 <p>The Xilinx MAC&rsquo;s use the AXI-stream protocol for transmitting data. The MAC&rsquo;s use a 156.25MHz internal clock and this design runs at that rate without gearboxes for simplicity.</p>
-
 <h3 id="axi-stream-and-pipeline-depth">AXI Stream and pipeline depth</h3>
-
 <p>A sample of the data on a AXI stream bus is given by the following type:</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-haskell" data-lang="haskell"><span style="color:#66d9ef">type</span> <span style="color:#66d9ef">Tdata</span> <span style="color:#f92672">=</span> <span style="color:#66d9ef">BitVector</span> <span style="color:#ae81ff">64</span> <span style="color:#75715e">-- 156.25MHz * 64b = 10g (with preamble overhead)</span>
+<span style="color:#66d9ef">type</span> <span style="color:#66d9ef">Tkeep</span> <span style="color:#f92672">=</span> <span style="color:#66d9ef">BitVector</span> <span style="color:#ae81ff">8</span>
+<span style="color:#75715e">-- tuser defined elsewere</span>
+<span style="color:#66d9ef">type</span> <span style="color:#66d9ef">Tvalid</span> <span style="color:#f92672">=</span> <span style="color:#66d9ef">Bit</span>
+<span style="color:#66d9ef">type</span> <span style="color:#66d9ef">Tready</span> <span style="color:#f92672">=</span> <span style="color:#66d9ef">Bit</span>
+<span style="color:#66d9ef">type</span> <span style="color:#66d9ef">Tlast</span> <span style="color:#f92672">=</span> <span style="color:#66d9ef">Bit</span>
 
-<pre><code class="language-haskell">type Tdata = BitVector 64 -- 156.25MHz * 64b = 10g (with preamble overhead)
-type Tkeep = BitVector 8
--- tuser defined elsewere
-type Tvalid = Bit
-type Tready = Bit
-type Tlast = Bit
+<span style="color:#66d9ef">data</span> <span style="color:#66d9ef">Stream</span> <span style="color:#f92672">=</span> <span style="color:#66d9ef">Stream</span> { <span style="color:#75715e">-- AXI stream single bus width sample</span>
+   tdata <span style="color:#f92672">::</span> <span style="color:#66d9ef">Tdata</span>, <span style="color:#75715e">-- packet data</span>
+   tkeep <span style="color:#f92672">::</span> <span style="color:#66d9ef">Tkeep</span>, <span style="color:#75715e">-- 8-bit-granularity valid lines</span>
+   tuser <span style="color:#f92672">::</span> <span style="color:#66d9ef">Tuser</span>, <span style="color:#75715e">-- metadata</span>
+   tvalid <span style="color:#f92672">::</span> <span style="color:#66d9ef">Tvalid</span>, <span style="color:#75715e">-- global tkeep</span>
+   tready <span style="color:#f92672">::</span> <span style="color:#66d9ef">Tready</span>, <span style="color:#75715e">-- backpressure signal</span>
+   tlast <span style="color:#f92672">::</span> <span style="color:#66d9ef">Tlast</span> <span style="color:#75715e">-- metadata for end of burst</span>
+} <span style="color:#66d9ef">deriving</span> (<span style="color:#66d9ef">Show</span>)
 
-data Stream = Stream { -- AXI stream single bus width sample
-   tdata :: Tdata, -- packet data
-   tkeep :: Tkeep, -- 8-bit-granularity valid lines
-   tuser :: Tuser, -- metadata
-   tvalid :: Tvalid, -- global tkeep
-   tready :: Tready, -- backpressure signal
-   tlast :: Tlast -- metadata for end of burst
-} deriving (Show)
-
--- it is useful to have empty instances to create instances from
-emptyStream :: Stream = Stream { tdata=0, tkeep=0, tuser=0, tvalid=0, tready=1, tlast=0 }
-</code></pre>
-
-<p>Our OPL module has 8 cycles of latency. 3 clocks are required to get the source MAC. 4 more clocks are needed in order to interleave the 4 ports of access to the MAC-&gt;PORT mapping module. A final clock is used to simplify output logic. The source MAC is required in order to act as a <em>learning</em> switch, as we may need to update our MAC-&gt;PORT mapping with this source and so the lookup cannot simply begin until we know this.<sup class="footnote-ref" id="fnref:1"><a href="#fn:1">1</a></sup></p>
-
+<span style="color:#75715e">-- it is useful to have empty instances to create instances from</span>
+<span style="color:#a6e22e">emptyStream</span> <span style="color:#f92672">::</span> <span style="color:#66d9ef">Stream</span> <span style="color:#f92672">=</span> <span style="color:#66d9ef">Stream</span> { tdata<span style="color:#f92672">=</span><span style="color:#ae81ff">0</span>, tkeep<span style="color:#f92672">=</span><span style="color:#ae81ff">0</span>, tuser<span style="color:#f92672">=</span><span style="color:#ae81ff">0</span>, tvalid<span style="color:#f92672">=</span><span style="color:#ae81ff">0</span>, tready<span style="color:#f92672">=</span><span style="color:#ae81ff">1</span>, tlast<span style="color:#f92672">=</span><span style="color:#ae81ff">0</span> }
+</code></pre></div><p>Our OPL module has 8 cycles of latency. 3 clocks are required to get the source MAC. 4 more clocks are needed in order to interleave the 4 ports of access to the MAC-&gt;PORT mapping module. A final clock is used to simplify output logic. The source MAC is required in order to act as a <em>learning</em> switch, as we may need to update our MAC-&gt;PORT mapping with this source and so the lookup cannot simply begin until we know this.<sup id="fnref:1"><a href="#fn:1" class="footnote-ref" role="doc-noteref">1</a></sup></p>
 <h3 id="pipeline-declaration">Pipeline declaration</h3>
-
 <p>The pipeline type contains the AXI stream connections within the module, as well as all the metadata the OPL has calculated so far. The module is a &ldquo;conveyor belt&rdquo; design that moves the data in a <code>PipelineStage</code> forward every cycle, modifying the data as it goes.</p>
-
-<pre><code class="language-haskell">data PipelineStage =  PipelineStage {
-    packet :: Stream,
-    pktValid :: Bool,
-    pktLast :: Bool,
-    flitCount :: Unsigned 8,
-    dstMac :: Maybe (BitVector 48),
-    srcMac :: Maybe (BitVector 48),
-    dstPorts :: Maybe (BitVector 8),
-    srcPorts :: (BitVector 8),
-    packetLen :: (BitVector 16)
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-haskell" data-lang="haskell"><span style="color:#66d9ef">data</span> <span style="color:#66d9ef">PipelineStage</span> <span style="color:#f92672">=</span>  <span style="color:#66d9ef">PipelineStage</span> {
+    packet <span style="color:#f92672">::</span> <span style="color:#66d9ef">Stream</span>,
+    pktValid <span style="color:#f92672">::</span> <span style="color:#66d9ef">Bool</span>,
+    pktLast <span style="color:#f92672">::</span> <span style="color:#66d9ef">Bool</span>,
+    flitCount <span style="color:#f92672">::</span> <span style="color:#66d9ef">Unsigned</span> <span style="color:#ae81ff">8</span>,
+    dstMac <span style="color:#f92672">::</span> <span style="color:#66d9ef">Maybe</span> (<span style="color:#66d9ef">BitVector</span> <span style="color:#ae81ff">48</span>),
+    srcMac <span style="color:#f92672">::</span> <span style="color:#66d9ef">Maybe</span> (<span style="color:#66d9ef">BitVector</span> <span style="color:#ae81ff">48</span>),
+    dstPorts <span style="color:#f92672">::</span> <span style="color:#66d9ef">Maybe</span> (<span style="color:#66d9ef">BitVector</span> <span style="color:#ae81ff">8</span>),
+    srcPorts <span style="color:#f92672">::</span> (<span style="color:#66d9ef">BitVector</span> <span style="color:#ae81ff">8</span>),
+    packetLen <span style="color:#f92672">::</span> (<span style="color:#66d9ef">BitVector</span> <span style="color:#ae81ff">16</span>)
 }
 
-pipelineDefault = PipelineStage { packet    = emptyStream,
-                                  pktValid  = False, -- first flit?
-                                  pktLast   = False,
-                                  flitCount = 0,
-                                  dstMac    = Nothing,
-                                  srcMac    = Nothing,
-                                  dstPorts  = Nothing,
-                                  srcPorts  = 0,
-                                  packetLen = 0}
+<span style="color:#a6e22e">pipelineDefault</span> <span style="color:#f92672">=</span> <span style="color:#66d9ef">PipelineStage</span> { packet    <span style="color:#f92672">=</span> emptyStream,
+                                  pktValid  <span style="color:#f92672">=</span> <span style="color:#66d9ef">False</span>, <span style="color:#75715e">-- first flit?</span>
+                                  pktLast   <span style="color:#f92672">=</span> <span style="color:#66d9ef">False</span>,
+                                  flitCount <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>,
+                                  dstMac    <span style="color:#f92672">=</span> <span style="color:#66d9ef">Nothing</span>,
+                                  srcMac    <span style="color:#f92672">=</span> <span style="color:#66d9ef">Nothing</span>,
+                                  dstPorts  <span style="color:#f92672">=</span> <span style="color:#66d9ef">Nothing</span>,
+                                  srcPorts  <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>,
+                                  packetLen <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span>}
 
-type OPLState = Vec 7 PipelineStage
-</code></pre>
-
-<p>This writing style keeps all the data and metadata together. The downside is much wider datapaths in clash than would be required for just buffering the AXI stream for 8 clocks. The clash compiler did not attempt to do any wiring simplification but this should be removed at elaboration time.</p>
-
+<span style="color:#66d9ef">type</span> <span style="color:#66d9ef">OPLState</span> <span style="color:#f92672">=</span> <span style="color:#66d9ef">Vec</span> <span style="color:#ae81ff">7</span> <span style="color:#66d9ef">PipelineStage</span>
+</code></pre></div><p>This writing style keeps all the data and metadata together. The downside is much wider datapaths in clash than would be required for just buffering the AXI stream for 8 clocks. The clash compiler did not attempt to do any wiring simplification but this should be removed at elaboration time.</p>
 <p>The Haskell Maybe type maps exactly to a Verilog type with a additional valid wire. If a Mabye type is exposed, it is easy enough to make combinatorial packers and unpackers that maintain idiomatic styles in both languages.</p>
-
 <h3 id="packet-routing-functions">Packet routing functions</h3>
-
 <p>Due to the designation mapper being a bottleneck in our design, we disabled support for the NetFPGA host ports. We can use maybe to set the DMA designations to zero only if they were valid.</p>
-
-<pre><code class="language-haskell">-- to avoid blocking the design, we need to never send to DMA
--- all odd bits are the DMA ports
-stripDMA :: Maybe (BitVector 8) -&gt; Maybe (BitVector 8)
-stripDMA dst = maybe Nothing (\p -&gt; Just (p .&amp;. ($$(bLit &quot;01010101&quot;) :: BitVector 8))) dst
-</code></pre>
-
-<p>Next we route the packets based upon the metadata in the current pipeline stage. Haskell pattern matching makes this kind of if-else logic clear. We set the destination for packets to the bcast MAC to all ports, otherwise if the MAC was not seen in the lookup table we send to all but the source port. If we have a successful lookup we use that routing.</p>
-
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-haskell" data-lang="haskell"><span style="color:#75715e">-- to avoid blocking the design, we need to never send to DMA</span>
+<span style="color:#75715e">-- all odd bits are the DMA ports</span>
+<span style="color:#a6e22e">stripDMA</span> <span style="color:#f92672">::</span> <span style="color:#66d9ef">Maybe</span> (<span style="color:#66d9ef">BitVector</span> <span style="color:#ae81ff">8</span>) <span style="color:#f92672">-&gt;</span> <span style="color:#66d9ef">Maybe</span> (<span style="color:#66d9ef">BitVector</span> <span style="color:#ae81ff">8</span>)
+<span style="color:#a6e22e">stripDMA</span> dst <span style="color:#f92672">=</span> maybe <span style="color:#66d9ef">Nothing</span> (<span style="color:#a6e22e">\</span>p <span style="color:#f92672">-&gt;</span> <span style="color:#66d9ef">Just</span> (p <span style="color:#f92672">.&amp;.</span> (<span style="color:#f92672">$$</span>(bLit <span style="color:#e6db74">&#34;</span><span style="color:#e6db74">01010101</span><span style="color:#e6db74">&#34;</span>) <span style="color:#f92672">::</span> <span style="color:#66d9ef">BitVector</span> <span style="color:#ae81ff">8</span>))) dst
+</code></pre></div><p>Next we route the packets based upon the metadata in the current pipeline stage. Haskell pattern matching makes this kind of if-else logic clear. We set the destination for packets to the bcast MAC to all ports, otherwise if the MAC was not seen in the lookup table we send to all but the source port. If we have a successful lookup we use that routing.</p>
 <p>Without the INLINE declaration, every haskell function generates a new Verilog module. For small functions like this it is simpler to fold all the logic into one module.</p>
-
-<pre><code class="language-haskell">extractDst :: TCAMreply -&gt; PipelineStage -&gt; Maybe (BitVector 8)
-{-# INLINE extractDst #-} -- we use inline to reduce the number of floating modules in verilog
-extractDst _ PipelineStage{dstMac = Just 0xffffffffffff}   = Just ($$(bLit &quot;11111111&quot;) :: BitVector 8) -- bcast
-extractDst TCAMreply{ lut_miss = 1 } state           = Just (complement (srcPorts state))
-extractDst TCAMreply{ lut_hit = 1, dst_ports=dst } _ = Just dst
-extractDst _ _ = Nothing
-</code></pre>
-
-<p><code>applyTcamRpy</code> looks for the results of a lookup in the current pipeline stage if this flit is the first one in a packet. Else, we replicate the destination from the last flit. This ensures that packets are not fragmented.</p>
-
-<pre><code class="language-haskell">applyTcamRpy :: PipelineStage -&gt; Bit -&gt; TCAMreply -&gt; PipelineStage
-{-# INLINE applyTcamRpy #-} -- we use inline to reduce the number of floating modules in verilog
-applyTcamRpy now rpyenb iTCAM = now { dstPorts = if headFlit now &amp;&amp; btb rpyenb
-                                                 then stripDMA (extractDst iTCAM now) -- add the new dst
-                                                 else dstPorts now } -- no rpy, keep looping
-</code></pre>
-
-<h3 id="the-lookup-pipeline">The lookup pipeline</h3>
-
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-haskell" data-lang="haskell"><span style="color:#a6e22e">extractDst</span> <span style="color:#f92672">::</span> <span style="color:#66d9ef">TCAMreply</span> <span style="color:#f92672">-&gt;</span> <span style="color:#66d9ef">PipelineStage</span> <span style="color:#f92672">-&gt;</span> <span style="color:#66d9ef">Maybe</span> (<span style="color:#66d9ef">BitVector</span> <span style="color:#ae81ff">8</span>)
+<span style="color:#75715e">{-</span><span style="color:#75715e"># INLINE extractDst #</span><span style="color:#75715e">-}</span> <span style="color:#75715e">-- we use inline to reduce the number of floating modules in verilog</span>
+<span style="color:#a6e22e">extractDst</span> <span style="color:#66d9ef">_</span> <span style="color:#66d9ef">PipelineStage</span>{dstMac <span style="color:#f92672">=</span> <span style="color:#66d9ef">Just</span> <span style="color:#ae81ff">0xffffffffffff</span>}   <span style="color:#f92672">=</span> <span style="color:#66d9ef">Just</span> (<span style="color:#f92672">$$</span>(bLit <span style="color:#e6db74">&#34;</span><span style="color:#e6db74">11111111</span><span style="color:#e6db74">&#34;</span>) <span style="color:#f92672">::</span> <span style="color:#66d9ef">BitVector</span> <span style="color:#ae81ff">8</span>) <span style="color:#75715e">-- bcast</span>
+<span style="color:#a6e22e">extractDst</span> <span style="color:#66d9ef">TCAMreply</span>{ lut_miss <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span> } state           <span style="color:#f92672">=</span> <span style="color:#66d9ef">Just</span> (complement (srcPorts state))
+<span style="color:#a6e22e">extractDst</span> <span style="color:#66d9ef">TCAMreply</span>{ lut_hit <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>, dst_ports<span style="color:#f92672">=</span>dst } <span style="color:#66d9ef">_</span> <span style="color:#f92672">=</span> <span style="color:#66d9ef">Just</span> dst
+<span style="color:#a6e22e">extractDst</span> <span style="color:#66d9ef">_</span> <span style="color:#66d9ef">_</span> <span style="color:#f92672">=</span> <span style="color:#66d9ef">Nothing</span>
+</code></pre></div><p><code>applyTcamRpy</code> looks for the results of a lookup in the current pipeline stage if this flit is the first one in a packet. Else, we replicate the destination from the last flit. This ensures that packets are not fragmented.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-haskell" data-lang="haskell"><span style="color:#a6e22e">applyTcamRpy</span> <span style="color:#f92672">::</span> <span style="color:#66d9ef">PipelineStage</span> <span style="color:#f92672">-&gt;</span> <span style="color:#66d9ef">Bit</span> <span style="color:#f92672">-&gt;</span> <span style="color:#66d9ef">TCAMreply</span> <span style="color:#f92672">-&gt;</span> <span style="color:#66d9ef">PipelineStage</span>
+<span style="color:#75715e">{-</span><span style="color:#75715e"># INLINE applyTcamRpy #</span><span style="color:#75715e">-}</span> <span style="color:#75715e">-- we use inline to reduce the number of floating modules in verilog</span>
+<span style="color:#a6e22e">applyTcamRpy</span> now rpyenb iTCAM <span style="color:#f92672">=</span> now { dstPorts <span style="color:#f92672">=</span> <span style="color:#66d9ef">if</span> headFlit now <span style="color:#f92672">&amp;&amp;</span> btb rpyenb
+                                                 <span style="color:#66d9ef">then</span> stripDMA (extractDst iTCAM now) <span style="color:#75715e">-- add the new dst</span>
+                                                 <span style="color:#66d9ef">else</span> dstPorts now } <span style="color:#75715e">-- no rpy, keep looping</span>
+</code></pre></div><h3 id="the-lookup-pipeline">The lookup pipeline</h3>
 <p>The final function is also the largest. At 100 lines of Haskell, it declares the action on each pipeline stage. The type is</p>
-
-<pre><code class="language-haskell">opl_pass_mealy :: OPLState -&gt; (Stream, TCAMreply, Bit, Bit) -&gt; (OPLState, (Stream, TCAMrequest))
-opl_pass_mealy state (iAXI, iTCAM, reqenb, rpyenb) = (s0 ++ s1 ++ s2 ++ s3 ++ s4 ++ s5 ++ s6, (oAXI, oTCAM))
- where
-</code></pre>
-
-<p>The body is a large <code>where</code> block defining the next values of pipeline stages <code>s0</code>-<code>s6</code>, and the connection to the later modules.</p>
-
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-haskell" data-lang="haskell"><span style="color:#a6e22e">opl_pass_mealy</span> <span style="color:#f92672">::</span> <span style="color:#66d9ef">OPLState</span> <span style="color:#f92672">-&gt;</span> (<span style="color:#66d9ef">Stream</span>, <span style="color:#66d9ef">TCAMreply</span>, <span style="color:#66d9ef">Bit</span>, <span style="color:#66d9ef">Bit</span>) <span style="color:#f92672">-&gt;</span> (<span style="color:#66d9ef">OPLState</span>, (<span style="color:#66d9ef">Stream</span>, <span style="color:#66d9ef">TCAMrequest</span>))
+<span style="color:#a6e22e">opl_pass_mealy</span> state (iAXI, iTCAM, reqenb, rpyenb) <span style="color:#f92672">=</span> (s0 <span style="color:#f92672">++</span> s1 <span style="color:#f92672">++</span> s2 <span style="color:#f92672">++</span> s3 <span style="color:#f92672">++</span> s4 <span style="color:#f92672">++</span> s5 <span style="color:#f92672">++</span> s6, (oAXI, oTCAM))
+ <span style="color:#66d9ef">where</span>
+</code></pre></div><p>The body is a large <code>where</code> block defining the next values of pipeline stages <code>s0</code>-<code>s6</code>, and the connection to the later modules.</p>
 <p>Our first act is to update the metadata in the pipeline as soon as flits enter. We need to segment packets and extract the dstMAC and part of the srcMAC depending on the current flit number.</p>
-
-<pre><code class="language-haskell">s0 =
-  let
-   valid = tkeep iAXI &gt; 0 -- there is valid data in this.
-   flitn = if not valid then 0 -- invalid, so not a flit
-           else if btb (tlast (packet (state !! 0))) then 1 -- last packet was the end, so this is a new packet
-           else (flitCount (state !! 0) + 1) -- valid, so incr the count. 1 is the head
-   -- is_this_last = False -- we know that from tlast, added by the 10G port
-   -- first 6 octets
-   dstmac = if flitn == 1 then slice d47 d0 (tdata iAXI) else (fromJust (dstMac (state !! 0)))
-   srcmacPartial = if flitn == 1 then
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-haskell" data-lang="haskell"><span style="color:#a6e22e">s0</span> <span style="color:#f92672">=</span>
+  <span style="color:#66d9ef">let</span>
+   valid <span style="color:#f92672">=</span> tkeep iAXI <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span> <span style="color:#75715e">-- there is valid data in this.</span>
+   flitn <span style="color:#f92672">=</span> <span style="color:#66d9ef">if</span> not valid <span style="color:#66d9ef">then</span> <span style="color:#ae81ff">0</span> <span style="color:#75715e">-- invalid, so not a flit</span>
+           <span style="color:#66d9ef">else</span> <span style="color:#66d9ef">if</span> btb (tlast (packet (state <span style="color:#f92672">!!</span> <span style="color:#ae81ff">0</span>))) <span style="color:#66d9ef">then</span> <span style="color:#ae81ff">1</span> <span style="color:#75715e">-- last packet was the end, so this is a new packet</span>
+           <span style="color:#66d9ef">else</span> (flitCount (state <span style="color:#f92672">!!</span> <span style="color:#ae81ff">0</span>) <span style="color:#f92672">+</span> <span style="color:#ae81ff">1</span>) <span style="color:#75715e">-- valid, so incr the count. 1 is the head</span>
+   <span style="color:#75715e">-- is_this_last = False -- we know that from tlast, added by the 10G port</span>
+   <span style="color:#75715e">-- first 6 octets</span>
+   dstmac <span style="color:#f92672">=</span> <span style="color:#66d9ef">if</span> flitn <span style="color:#f92672">==</span> <span style="color:#ae81ff">1</span> <span style="color:#66d9ef">then</span> slice d47 d0 (tdata iAXI) <span style="color:#66d9ef">else</span> (fromJust (dstMac (state <span style="color:#f92672">!!</span> <span style="color:#ae81ff">0</span>)))
+   srcmacPartial <span style="color:#f92672">=</span> <span style="color:#66d9ef">if</span> flitn <span style="color:#f92672">==</span> <span style="color:#ae81ff">1</span> <span style="color:#66d9ef">then</span>
                       slice d63 d48 (tdata iAXI)
-                   else
-                      slice d15 d0 (fromJust (srcMac (state !! 0)))
-   srcPorts = slice d23 d16 (tuser iAXI)
-  in singleton pipelineDefault { packet = iAXI,
-                                 pktValid = valid,
-                                 flitCount = flitn,
-                                 dstMac    = Just dstmac,
-                                 srcMac    = Just ( (0 :: BitVector 32) ++# srcmacPartial ),
-srcPorts = srcPorts }
-</code></pre>
-
-<p>By stage 2 we know the full srcMAC and can prepare to make a lookup request. If the packet uses etype for size, we trust  this. Otherwise we fall back on a possible prior module to have filled it in. Failing that we set the max length in wide use. This also shows the general form of performing a calculation only if this is the first flit in a packet as determined earlier.</p>
-
-<pre><code class="language-haskell">-- stage 2: add src mac, - r0
--- if headFlit, then packet that just came in is flit 2 - has src and len
-s1 = if headFlit (state !! 0) then
-       singleton (state !! 0) { srcMac = Just ( (slice d31 d0 (tdata iAXI)) ++#
-                                                (slice d15 d0 (fromJust (srcMac (state !! 0))))
+                   <span style="color:#66d9ef">else</span>
+                      slice d15 d0 (fromJust (srcMac (state <span style="color:#f92672">!!</span> <span style="color:#ae81ff">0</span>)))
+   srcPorts <span style="color:#f92672">=</span> slice d23 d16 (tuser iAXI)
+  <span style="color:#66d9ef">in</span> singleton pipelineDefault { packet <span style="color:#f92672">=</span> iAXI,
+                                 pktValid <span style="color:#f92672">=</span> valid,
+                                 flitCount <span style="color:#f92672">=</span> flitn,
+                                 dstMac    <span style="color:#f92672">=</span> <span style="color:#66d9ef">Just</span> dstmac,
+                                 srcMac    <span style="color:#f92672">=</span> <span style="color:#66d9ef">Just</span> ( (<span style="color:#ae81ff">0</span> <span style="color:#f92672">::</span> <span style="color:#66d9ef">BitVector</span> <span style="color:#ae81ff">32</span>) <span style="color:#f92672">++#</span> srcmacPartial ),
+<span style="color:#a6e22e">srcPorts</span> <span style="color:#f92672">=</span> srcPorts }
+</code></pre></div><p>By stage 2 we know the full srcMAC and can prepare to make a lookup request. If the packet uses etype for size, we trust  this. Otherwise we fall back on a possible prior module to have filled it in. Failing that we set the max length in wide use. This also shows the general form of performing a calculation only if this is the first flit in a packet as determined earlier.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-haskell" data-lang="haskell"><span style="color:#75715e">-- stage 2: add src mac, - r0</span>
+<span style="color:#75715e">-- if headFlit, then packet that just came in is flit 2 - has src and len</span>
+<span style="color:#a6e22e">s1</span> <span style="color:#f92672">=</span> <span style="color:#66d9ef">if</span> headFlit (state <span style="color:#f92672">!!</span> <span style="color:#ae81ff">0</span>) <span style="color:#66d9ef">then</span>
+       singleton (state <span style="color:#f92672">!!</span> <span style="color:#ae81ff">0</span>) { srcMac <span style="color:#f92672">=</span> <span style="color:#66d9ef">Just</span> ( (slice d31 d0 (tdata iAXI)) <span style="color:#f92672">++#</span>
+                                                (slice d15 d0 (fromJust (srcMac (state <span style="color:#f92672">!!</span> <span style="color:#ae81ff">0</span>))))
                                          ),
-                                packetLen =  let
-                                                etype = slice d31 d16 (tdata iAXI)
-                                             in
-                                                -- etype was protocol indicator, we can't determine the length of frame without store/forward
-                                                if etype &lt;= 1500 then etype
-                                                else if slice d15 d0 (tuser iAXI) &gt; 0 then slice d15 d0 (tuser iAXI)
-                                                else 9000 -- max length
+                                packetLen <span style="color:#f92672">=</span>  <span style="color:#66d9ef">let</span>
+                                                etype <span style="color:#f92672">=</span> slice d31 d16 (tdata iAXI)
+                                             <span style="color:#66d9ef">in</span>
+                                                <span style="color:#75715e">-- etype was protocol indicator, we can&#39;t determine the length of frame without store/forward</span>
+                                                <span style="color:#66d9ef">if</span> etype <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">1500</span> <span style="color:#66d9ef">then</span> etype
+                                                <span style="color:#66d9ef">else</span> <span style="color:#66d9ef">if</span> slice d15 d0 (tuser iAXI) <span style="color:#f92672">&gt;</span> <span style="color:#ae81ff">0</span> <span style="color:#66d9ef">then</span> slice d15 d0 (tuser iAXI)
+                                                <span style="color:#66d9ef">else</span> <span style="color:#ae81ff">9000</span> <span style="color:#75715e">-- max length</span>
                               }
-     else
-singleton (state !! 0) { srcMac = srcMac (state !! 1), packetLen = packetLen (state !! 1) }
-</code></pre>
-
-<p>The next stages are identical. A outside module controls which of the 4 ports the reply from the mapping module affects, and so we repeat this block 4 times to ensure we catch the reply.</p>
-
-<pre><code class="language-haskell">s2 = singleton (applyTcamRpy (state !! 1) rpyenb iTCAM)
-s3 = singleton (applyTcamRpy (state !! 2) rpyenb iTCAM)
-s4 = singleton (applyTcamRpy (state !! 3) rpyenb iTCAM)
-s5 = singleton (applyTcamRpy (state !! 4) rpyenb iTCAM)
-</code></pre>
-
-<p>Finally we put all our metadata into the TUSER part of the pipeline.</p>
-
-<pre><code class="language-Haskell">s6 = let -- add the output port and other tuser stuff
-       s5now = (state !! 5)
-       s6now = (state !! 6)
-     in let
-       newtuser = if headFlit s5now then
-                    (slice d127 d32 (tuser (packet s5now))) ++#
-                    (fromJust (dstPorts s5now)) ++#
-                    (srcPorts  s5now) ++#
+     <span style="color:#66d9ef">else</span>
+<span style="color:#a6e22e">singleton</span> (state <span style="color:#f92672">!!</span> <span style="color:#ae81ff">0</span>) { srcMac <span style="color:#f92672">=</span> srcMac (state <span style="color:#f92672">!!</span> <span style="color:#ae81ff">1</span>), packetLen <span style="color:#f92672">=</span> packetLen (state <span style="color:#f92672">!!</span> <span style="color:#ae81ff">1</span>) }
+</code></pre></div><p>The next stages are identical. A outside module controls which of the 4 ports the reply from the mapping module affects, and so we repeat this block 4 times to ensure we catch the reply.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-haskell" data-lang="haskell"><span style="color:#a6e22e">s2</span> <span style="color:#f92672">=</span> singleton (applyTcamRpy (state <span style="color:#f92672">!!</span> <span style="color:#ae81ff">1</span>) rpyenb iTCAM)
+<span style="color:#a6e22e">s3</span> <span style="color:#f92672">=</span> singleton (applyTcamRpy (state <span style="color:#f92672">!!</span> <span style="color:#ae81ff">2</span>) rpyenb iTCAM)
+<span style="color:#a6e22e">s4</span> <span style="color:#f92672">=</span> singleton (applyTcamRpy (state <span style="color:#f92672">!!</span> <span style="color:#ae81ff">3</span>) rpyenb iTCAM)
+<span style="color:#a6e22e">s5</span> <span style="color:#f92672">=</span> singleton (applyTcamRpy (state <span style="color:#f92672">!!</span> <span style="color:#ae81ff">4</span>) rpyenb iTCAM)
+</code></pre></div><p>Finally we put all our metadata into the TUSER part of the pipeline.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-Haskell" data-lang="Haskell"><span style="color:#a6e22e">s6</span> <span style="color:#f92672">=</span> <span style="color:#66d9ef">let</span> <span style="color:#75715e">-- add the output port and other tuser stuff</span>
+       s5now <span style="color:#f92672">=</span> (state <span style="color:#f92672">!!</span> <span style="color:#ae81ff">5</span>)
+       s6now <span style="color:#f92672">=</span> (state <span style="color:#f92672">!!</span> <span style="color:#ae81ff">6</span>)
+     <span style="color:#66d9ef">in</span> <span style="color:#66d9ef">let</span>
+       newtuser <span style="color:#f92672">=</span> <span style="color:#66d9ef">if</span> headFlit s5now <span style="color:#66d9ef">then</span>
+                    (slice d127 d32 (tuser (packet s5now))) <span style="color:#f92672">++#</span>
+                    (fromJust (dstPorts s5now)) <span style="color:#f92672">++#</span>
+                    (srcPorts  s5now) <span style="color:#f92672">++#</span>
                     (packetLen s5now)
-                  else if (pktValid s5now) then -- loop it
-                    tuser (packet s6now) -- prev packet
-                  else
-                    (0 :: Tuser)
-     in  
-singleton s5now { packet = (packet s5now) { tuser = newtuser }}
+                  <span style="color:#66d9ef">else</span> <span style="color:#66d9ef">if</span> (pktValid s5now) <span style="color:#66d9ef">then</span> <span style="color:#75715e">-- loop it</span>
+                    tuser (packet s6now) <span style="color:#75715e">-- prev packet</span>
+                  <span style="color:#66d9ef">else</span>
+                    (<span style="color:#ae81ff">0</span> <span style="color:#f92672">::</span> <span style="color:#66d9ef">Tuser</span>)
+     <span style="color:#66d9ef">in</span>  
+<span style="color:#a6e22e">singleton</span> s5now { packet <span style="color:#f92672">=</span> (packet s5now) { tuser <span style="color:#f92672">=</span> newtuser }}
 
-oAXI = (packet (state !! 6)) -- cycle after assignment to s6 for any given flit
-</code></pre>
-
-<p>The only remaining logic is to use an outside signal to send mapping lookup requests at the right time.</p>
-
-<pre><code class="language-Haskell">oTCAM =
-  let
-    -- if pkt in fst pipeline stage is flitcount elem [1, 2, 3, 4] then we have the head, this is idx
-    headloc = if flitCount (state !! 0) &gt;= 2 &amp;&amp; flitCount (state !! 0) &lt;= 5 then
-      Just ((flitCount (state !! 0)) - 1)
-      else Nothing
-  in
-    if isJust headloc &amp;&amp; btb reqenb
-         then TCAMrequest { lookup_req = 1,
-                            dst_mac = fromJust (dstMac (state !! (fromJust headloc))),
-                            src_mac = fromJust (srcMac (state !! (fromJust headloc))),
-                            src_port = (srcPorts (state !! (fromJust headloc))) }
-else tcam_r_default
-</code></pre>
-
-<p>And whist fairly terse that is the full lookup logic for a 10g 4 port L2 switch. The benefits of maintaining a clear state machine may be felt even more when attempting to do kinds of low latency L3 switching.</p>
-
+<span style="color:#a6e22e">oAXI</span> <span style="color:#f92672">=</span> (packet (state <span style="color:#f92672">!!</span> <span style="color:#ae81ff">6</span>)) <span style="color:#75715e">-- cycle after assignment to s6 for any given flit</span>
+</code></pre></div><p>The only remaining logic is to use an outside signal to send mapping lookup requests at the right time.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-Haskell" data-lang="Haskell"><span style="color:#a6e22e">oTCAM</span> <span style="color:#f92672">=</span>
+  <span style="color:#66d9ef">let</span>
+    <span style="color:#75715e">-- if pkt in fst pipeline stage is flitcount elem [1, 2, 3, 4] then we have the head, this is idx</span>
+    headloc <span style="color:#f92672">=</span> <span style="color:#66d9ef">if</span> flitCount (state <span style="color:#f92672">!!</span> <span style="color:#ae81ff">0</span>) <span style="color:#f92672">&gt;=</span> <span style="color:#ae81ff">2</span> <span style="color:#f92672">&amp;&amp;</span> flitCount (state <span style="color:#f92672">!!</span> <span style="color:#ae81ff">0</span>) <span style="color:#f92672">&lt;=</span> <span style="color:#ae81ff">5</span> <span style="color:#66d9ef">then</span>
+      <span style="color:#66d9ef">Just</span> ((flitCount (state <span style="color:#f92672">!!</span> <span style="color:#ae81ff">0</span>)) <span style="color:#f92672">-</span> <span style="color:#ae81ff">1</span>)
+      <span style="color:#66d9ef">else</span> <span style="color:#66d9ef">Nothing</span>
+  <span style="color:#66d9ef">in</span>
+    <span style="color:#66d9ef">if</span> isJust headloc <span style="color:#f92672">&amp;&amp;</span> btb reqenb
+         <span style="color:#66d9ef">then</span> <span style="color:#66d9ef">TCAMrequest</span> { lookup_req <span style="color:#f92672">=</span> <span style="color:#ae81ff">1</span>,
+                            dst_mac <span style="color:#f92672">=</span> fromJust (dstMac (state <span style="color:#f92672">!!</span> (fromJust headloc))),
+                            src_mac <span style="color:#f92672">=</span> fromJust (srcMac (state <span style="color:#f92672">!!</span> (fromJust headloc))),
+                            src_port <span style="color:#f92672">=</span> (srcPorts (state <span style="color:#f92672">!!</span> (fromJust headloc))) }
+<span style="color:#66d9ef">else</span> tcam_r_default
+</code></pre></div><p>And whist fairly terse that is the full lookup logic for a 10g 4 port L2 switch. The benefits of maintaining a clear state machine may be felt even more when attempting to do kinds of low latency L3 switching.</p>
 <h3 id="outside-module-declaration">Outside module declaration</h3>
-
 <p>We define the initial state of the module as a empty pipeline (this also allows a reset wire to fully reset the module).
 Next we use a ANNotation to subdivide the ports into the logic we need for outside interfacing, declare a clock and a reset that may be async, and mark this function as the compile target by assigning to <code>topEntity</code>.</p>
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-haskell" data-lang="haskell"><span style="color:#a6e22e">oplInitalState</span> <span style="color:#f92672">::</span> <span style="color:#66d9ef">OPLState</span> <span style="color:#f92672">=</span> replicate (<span style="color:#66d9ef">SNat</span> <span style="color:#f92672">::</span> <span style="color:#66d9ef">SNat</span> <span style="color:#ae81ff">7</span>) pipelineDefault
 
-<pre><code class="language-haskell">oplInitalState :: OPLState = replicate (SNat :: SNat 7) pipelineDefault
+<span style="color:#75715e">{-</span><span style="color:#75715e"># ANN topEntity
+</span><span style="color:#75715e">  (Synthesize
+</span><span style="color:#75715e">    </span><span style="color:#75715e">{</span><span style="color:#75715e"> t_name     = &#34;OPL&#34;
+</span><span style="color:#75715e">    , t_inputs   = [
+</span><span style="color:#75715e">        PortName &#34;clk&#34;,
+</span><span style="color:#75715e">        PortName &#34;rst&#34;,
+</span><span style="color:#75715e">        PortProduct &#34;&#34; [
+</span><span style="color:#75715e">                        PortProduct &#34;&#34; [PortName &#34;I_DATA&#34;, PortName &#34;I_KEEP&#34;, PortName &#34;I_USER&#34;,
+</span><span style="color:#75715e">                                        PortName &#34;I_VALID&#34;, PortName &#34;I_READY&#34;, PortName &#34;I_LAST&#34;],
+</span><span style="color:#75715e">                        PortProduct &#34;&#34; [PortName &#34;TCAM_I_PORTS&#34;, PortName &#34;TCAM_DONE&#34;,
+</span><span style="color:#75715e">                                        PortName &#34;TCAM_MISS&#34;, PortName &#34;TCAM_HIT&#34;],
+</span><span style="color:#75715e">                        </span><span style="color:#75715e">-</span><span style="color:#75715e">-</span><span style="color:#75715e"> PortName &#34;TCAM_RPY&#34;,
+</span><span style="color:#75715e">                        PortName &#34;REQ_ENB&#34;,
+</span><span style="color:#75715e">                        PortName &#34;RPY_ENB&#34;
+</span><span style="color:#75715e">                       ]
+</span><span style="color:#75715e">        ]
+</span><span style="color:#75715e">    , t_output  = PortProduct &#34;&#34; [PortProduct &#34;&#34; [PortName &#34;O_DATA&#34;, PortName &#34;O_KEEP&#34;, PortName &#34;O_USER&#34;,
+</span><span style="color:#75715e">                                                  PortName &#34;O_VALID&#34;, PortName &#34;O_READY&#34;, PortName &#34;O_LAST&#34;],
+</span><span style="color:#75715e">                                  PortProduct &#34;&#34; [PortName &#34;TCAM_O_DST_MAC&#34;, PortName &#34;TCAM_O_SRC_MAC&#34;,
+</span><span style="color:#75715e">                                                  PortName &#34;TCAM_O_SRC_PORT&#34;, PortName &#34;TCAM_O_LOOKUP_REQ&#34;]
+</span><span style="color:#75715e">                                  </span><span style="color:#75715e">-</span><span style="color:#75715e">-</span><span style="color:#75715e"> PortName &#34;TCAM_REQ&#34;
+</span><span style="color:#75715e">                                  ]
+</span><span style="color:#75715e">    </span><span style="color:#75715e">}</span><span style="color:#75715e">) #</span><span style="color:#75715e">-}</span>
 
-{-# ANN topEntity
-  (Synthesize
-    { t_name     = &quot;OPL&quot;
-    , t_inputs   = [
-        PortName &quot;clk&quot;,
-        PortName &quot;rst&quot;,
-        PortProduct &quot;&quot; [
-                        PortProduct &quot;&quot; [PortName &quot;I_DATA&quot;, PortName &quot;I_KEEP&quot;, PortName &quot;I_USER&quot;,
-                                        PortName &quot;I_VALID&quot;, PortName &quot;I_READY&quot;, PortName &quot;I_LAST&quot;],
-                        PortProduct &quot;&quot; [PortName &quot;TCAM_I_PORTS&quot;, PortName &quot;TCAM_DONE&quot;,
-                                        PortName &quot;TCAM_MISS&quot;, PortName &quot;TCAM_HIT&quot;],
-                        -- PortName &quot;TCAM_RPY&quot;,
-                        PortName &quot;REQ_ENB&quot;,
-                        PortName &quot;RPY_ENB&quot;
-                       ]
-        ]
-    , t_output  = PortProduct &quot;&quot; [PortProduct &quot;&quot; [PortName &quot;O_DATA&quot;, PortName &quot;O_KEEP&quot;, PortName &quot;O_USER&quot;,
-                                                  PortName &quot;O_VALID&quot;, PortName &quot;O_READY&quot;, PortName &quot;O_LAST&quot;],
-                                  PortProduct &quot;&quot; [PortName &quot;TCAM_O_DST_MAC&quot;, PortName &quot;TCAM_O_SRC_MAC&quot;,
-                                                  PortName &quot;TCAM_O_SRC_PORT&quot;, PortName &quot;TCAM_O_LOOKUP_REQ&quot;]
-                                  -- PortName &quot;TCAM_REQ&quot;
-                                  ]
-    }) #-}
+<span style="color:#a6e22e">topEntity</span>   
+  <span style="color:#f92672">::</span> <span style="color:#66d9ef">Clock</span> <span style="color:#66d9ef">System</span> <span style="color:#66d9ef">Source</span>
+  <span style="color:#f92672">-&gt;</span> <span style="color:#66d9ef">Reset</span> <span style="color:#66d9ef">System</span> <span style="color:#66d9ef">Asynchronous</span>
+  <span style="color:#f92672">-&gt;</span> <span style="color:#66d9ef">Signal</span> <span style="color:#66d9ef">System</span> (<span style="color:#66d9ef">Stream</span>, <span style="color:#66d9ef">TCAMreply</span>, <span style="color:#66d9ef">Bit</span>, <span style="color:#66d9ef">Bit</span>)
+  <span style="color:#f92672">-&gt;</span> <span style="color:#66d9ef">Signal</span> <span style="color:#66d9ef">System</span> (<span style="color:#66d9ef">Stream</span>, <span style="color:#66d9ef">TCAMrequest</span>)
 
-topEntity   
-  :: Clock System Source
-  -&gt; Reset System Asynchronous
-  -&gt; Signal System (Stream, TCAMreply, Bit, Bit)
-  -&gt; Signal System (Stream, TCAMrequest)
-
-topEntity = exposeClockReset (mealy opl_pass_mealy oplInitalState)
-</code></pre>
-
-<h1 id="footnotes">Footnotes</h1>
-<div class="footnotes">
-
-<hr />
-
+<span style="color:#a6e22e">topEntity</span> <span style="color:#f92672">=</span> exposeClockReset (mealy opl_pass_mealy oplInitalState)
+</code></pre></div><h1 id="footnotes">Footnotes</h1>
+<section class="footnotes" role="doc-endnotes">
+<hr>
 <ol>
-<li id="fn:1">The bandwidth of our switch is limited by the mapping lookup rate and this latency. As it tuns out, we could not add more ports as we are limited in both latency and bandwidth to the mapping module. The mapper is fully scheduled with no free clock lookups. Simultainusly the OPL is the same length as the width of the output port MAC. If it took 9 clocks to identify the destination, the first 64B of the packet would have to be delivered to the MAC without a destination.
- <a class="footnote-return" href="#fnref:1"><sup>[return]</sup></a></li>
+<li id="fn:1" role="doc-endnote">
+<p>The bandwidth of our switch is limited by the mapping lookup rate and this latency. As it tuns out, we could not add more ports as we are limited in both latency and bandwidth to the mapping module. The mapper is fully scheduled with no free clock lookups. Simultainusly the OPL is the same length as the width of the output port MAC. If it took 9 clocks to identify the destination, the first 64B of the packet would have to be delivered to the MAC without a destination. <a href="#fnref:1" class="footnote-backref" role="doc-backlink">&#x21a9;&#xfe0e;</a></p>
+</li>
 </ol>
-</div>
+</section>
 
 
 		
 	</div>
 
 	<div class="pagination">
-		<a href="/blog/posts/fpga-quantum-simulation/" class="left arrow">&#8592;</a>
+		<a href="/posts/fpga-quantum-simulation/" class="left arrow">&#8592;</a>
+		<a href="/posts/graphcorenoc/" class="right arrow">&#8594;</a>
 
 		<a href="#" class="top">Top</a>
 	</div>
@@ -322,8 +264,9 @@ topEntity = exposeClockReset (mealy opl_pass_mealy oplInitalState)
 
 
         		<footer>
+			
 			<span>
-			&copy; <time datetime="2019-01-14 08:08:29.831308 -0700 MST m=&#43;0.051896012">2019</time> . Made with <a href='https://gohugo.io'>Hugo</a> using the <a href='https://github.com/EmielH/tale-hugo/'>Tale</a> theme.
+			&copy; <time datetime="2021-02-06 23:24:40.78446 &#43;0000 GMT m=&#43;0.156927924">2021</time> Thomas Parks. Made with <a href='https://gohugo.io'>Hugo</a> using the <a href='https://github.com/EmielH/tale-hugo/'>Tale</a> theme.
 			</span>
 		</footer>
 
